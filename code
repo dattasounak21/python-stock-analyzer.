@@ -1,0 +1,159 @@
+import yfinance as yf
+import pandas as pd
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+
+def get_stock_data(ticker):
+    """
+    Fetches historical stock data from Yahoo Finance.
+    
+    Args:
+        ticker (str): The stock ticker symbol (e.g., 'RELIANCE.NS').
+    
+    Returns:
+        pd.DataFrame: A pandas DataFrame with the stock data, or None if an error occurs.
+    """
+    print(f"Fetching data for {ticker} from Yahoo Finance...")
+    try:
+        # Let yfinance handle its own session management for simplicity and reliability.
+        stock = yf.Ticker(ticker)
+        
+        # Fetch data for a sufficient period to ensure we have data.
+        df = stock.history(period="1y")
+        
+        # Check if the DataFrame is empty (which means the ticker is likely invalid)
+        if df.empty:
+            print(f"\nError: No data found for ticker '{ticker}'.")
+            print("Please double-check the symbol. For Indian stocks, it should end with '.NS' (e.g., 'RELIANCE.NS').")
+            return None
+            
+        # --- Diagnostic Print ---
+        # This will show you exactly what data the script is receiving.
+        print(f"\nSuccessfully fetched {len(df)} rows of data.")
+        print("--- Last 5 Days of Data ---")
+        print(df.tail())
+        print("---------------------------\n")
+        # --- End Diagnostic ---
+            
+        # Rename columns to be lowercase to match the rest of the script
+        df.rename(columns={
+            'Open': 'open',
+            'High': 'high',
+            'Low': 'low',
+            'Close': 'close',
+            'Volume': 'volume'
+        }, inplace=True)
+        
+        return df
+
+    except Exception as e:
+        print(f"An unexpected error occurred while fetching data: {e}")
+        return None
+
+def analyze_and_display_data(df, ticker):
+    """
+    Analyzes the stock data and prints key metrics.
+    
+    Args:
+        df (pd.DataFrame): The DataFrame containing stock data.
+        ticker (str): The stock ticker symbol.
+    """
+    # Add a more specific check for why analysis might fail.
+    if df is None or df.empty:
+        print("Cannot analyze data because no data was provided from the source.")
+        return
+    
+    if len(df) < 2:
+        print(f"Cannot perform analysis because only {len(df)} row(s) of data were found. At least 2 are needed to calculate the day's change.")
+        return
+
+    # --- Calculate Metrics ---
+    latest_price = df['close'].iloc[-1]
+    previous_price = df['close'].iloc[-2]
+    change = latest_price - previous_price
+    change_percent = (change / previous_price) * 100
+    high_100d = df['high'].tail(100).max()
+    low_100d = df['low'].tail(100).min()
+
+    # --- Print Analysis ---
+    print("\n--- Stock Analysis ---")
+    print(f"Symbol:         {ticker}")
+    print(f"Latest Price:   ₹{latest_price:.2f}")
+    
+    if change >= 0:
+        print(f"Day's Change:   ▲ +₹{change:.2f} (+{change_percent:.2f}%)")
+    else:
+        print(f"Day's Change:   ▼ -₹{abs(change):.2f} ({change_percent:.2f}%)")
+        
+    print(f"100-Day High:   ₹{high_100d:.2f}")
+    print(f"100-Day Low:    ₹{low_100d:.2f}")
+    print("----------------------\n")
+
+
+def plot_stock_chart(df, ticker):
+    """
+    Creates and displays an interactive stock chart using Plotly.
+    
+    Args:
+        df (pd.DataFrame): The DataFrame containing stock data.
+        ticker (str): The stock ticker symbol.
+    """
+    if df is None or df.empty:
+        print("No data to plot.")
+        return
+        
+    # Create a subplot for price and volume
+    fig = make_subplots(rows=2, cols=1, shared_xaxes=True, 
+                        vertical_spacing=0.1, 
+                        subplot_titles=(f'{ticker} Price History', 'Volume'),
+                        row_heights=[0.7, 0.3])
+
+    # Add the price line chart
+    fig.add_trace(go.Scatter(x=df.index, y=df['close'],
+                             mode='lines',
+                             name='Close Price',
+                             line=dict(color='cyan', width=2)),
+                  row=1, col=1)
+
+    # Add the volume bar chart
+    fig.add_trace(go.Bar(x=df.index, y=df['volume'],
+                         name='Volume',
+                         marker_color='lightblue'),
+                  row=2, col=1)
+
+    # Update layout for a clean, dark theme
+    fig.update_layout(
+        title_text=f'{ticker} Financial Data',
+        xaxis_rangeslider_visible=False,
+        template='plotly_dark',
+        yaxis_title='Price (INR)',
+        yaxis2_title='Volume',
+        showlegend=False
+    )
+    
+    # Update y-axis to show currency format
+    fig.update_yaxes(tickprefix="₹", row=1, col=1)
+
+    print("Displaying interactive chart...")
+    fig.show()
+
+
+if __name__ == '__main__':
+    # --- Main Execution ---
+    
+    print("--- Indian Stock Analyzer (No API Key Needed) ---")
+    print("Enter a stock ticker from the National Stock Exchange (NSE).")
+    
+    # Get user input for the ticker
+    user_ticker = input("Please enter the ticker symbol (e.g., RELIANCE.NS, TCS.NS): ").upper().strip()
+    
+    if user_ticker:
+        # Fetch data using yfinance
+        stock_df = get_stock_data(user_ticker)
+        
+        # If data is successfully fetched, analyze and plot it
+        if stock_df is not None:
+            analyze_and_display_data(stock_df, user_ticker)
+            plot_stock_chart(stock_df.tail(100), user_ticker) # Plot the last 100 days
+    else:
+        print("No ticker symbol entered. Exiting.")
